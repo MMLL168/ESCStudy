@@ -39,6 +39,7 @@
             <button onclick="app.switchView('execution')" id="nav-execution" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">3. 運作機制與頻率</button>
             <button onclick="app.switchView('lifecycle')" id="nav-lifecycle" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">4. 訊號生命週期</button>
             <button onclick="app.switchView('hack')" id="nav-hack" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">5. 魔改建議</button>
+            <button onclick="app.switchView('pinmap')" id="nav-pinmap" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">6. 硬體腳位映射</button>
         </div>
     </nav>
 
@@ -157,6 +158,111 @@
                             <h4 class="font-bold text-lg text-slate-100 mb-2">3. 深入優化控制頻率 (Loop Hz)</h4>
                             <p class="text-slate-400 text-sm">目前的 20kHz 足以應付 DShot600。若未來要實驗更高頻率，需連動修改 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">targets.h</code> 中的 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">LOOP_FREQUENCY_HZ</code> 以及 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">peripherals.c</code> 中 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">MX_TIM6_Init</code> 的分頻計算公式。</p>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-pinmap" class="view-section fade-in hidden">
+                <div class="bg-slate-800 rounded-xl shadow-lg p-6 md:p-8 border border-slate-700">
+                    <h2 class="text-2xl font-bold text-slate-100 mb-4">硬體腳位與專案對應表 (Pinmap)</h2>
+                    <p class="text-slate-300 mb-6 leading-relaxed">
+                        此表彙整了 B-G431B-ESC1 (STM32G431) 開發板在 AM32 專案 (<code>B_G431B_ESC</code>) 中的實體腳位與底層硬體周邊的精確對應，方便您後續進行 Pixhawk 實體接線或以示波器 Debug 時快速查閱。
+                    </p>
+                    
+                    <div class="overflow-x-auto rounded-lg border border-slate-700 shadow-sm">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900 text-slate-200 border-b border-slate-700 font-semibold">
+                                <tr>
+                                    <th class="px-4 py-3 whitespace-nowrap">功能分類</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">腳位 (Pin)</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">硬體周邊 (Peripheral)</th>
+                                    <th class="px-4 py-3">專案對應說明與備註</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700/50">
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3 font-medium text-slate-200" rowspan="2">燒錄與除錯 (SWD)</td>
+                                    <td class="px-4 py-3"><span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA13</span></td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">SWDIO</td>
+                                    <td class="px-4 py-3 text-xs" rowspan="2">建議使用板載 F103 ST-LINK，避免使用外接除錯器導致 OpenOCD 抓錯 Probe。</td>
+                                </tr>
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3"><span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA14</span></td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">SWCLK</td>
+                                </tr>
+                                
+                                <tr class="hover:bg-slate-700/30 transition-colors bg-slate-800/50">
+                                    <td class="px-4 py-3 font-medium text-slate-200">控制訊號輸入 (RX)</td>
+                                    <td class="px-4 py-3"><span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA2</span></td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">TIM15_CH1 + DMA1_CH1</td>
+                                    <td class="px-4 py-3 text-xs"><strong class="text-red-400">重要警告：</strong>DShot / Input Capture 專用腳位。嚴禁配置為 USART2_TX，會引發衝突。</td>
+                                </tr>
+
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3 font-medium text-slate-200" rowspan="3">三相馬達驅動<br>(PWM TX + 死區)</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        高 <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA10</span><br>
+                                        低 <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PB15</span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">TIM1_CH3<br>TIM1_CH3N</td>
+                                    <td class="px-4 py-3 text-xs">Phase A。具備 80 clock 互補硬體死區保護。</td>
+                                </tr>
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        高 <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA9</span><br>
+                                        低 <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PB14</span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">TIM1_CH2<br>TIM1_CH2N</td>
+                                    <td class="px-4 py-3 text-xs">Phase B。</td>
+                                </tr>
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        高 <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA8</span><br>
+                                        低 <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PB13</span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">TIM1_CH1<br>TIM1_CH1N</td>
+                                    <td class="px-4 py-3 text-xs">Phase C。</td>
+                                </tr>
+
+                                <tr class="hover:bg-slate-700/30 transition-colors bg-slate-800/50">
+                                    <td class="px-4 py-3 font-medium text-slate-200" rowspan="3">反電動勢偵測<br>(BEMF Zero-Cross)</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        - <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA5</span><br>
+                                        + <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA3</span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">COMP2 + EXTI Line 22</td>
+                                    <td class="px-4 py-3 text-xs">Phase A 偵測。觸發 <code>COMP1_2_3_IRQHandler</code>。</td>
+                                </tr>
+                                <tr class="hover:bg-slate-700/30 transition-colors bg-slate-800/50">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        - <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA4</span><br>
+                                        + <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA1</span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">COMP1 + EXTI Line 21</td>
+                                    <td class="px-4 py-3 text-xs">Phase B 偵測。</td>
+                                </tr>
+                                <tr class="hover:bg-slate-700/30 transition-colors bg-slate-800/50">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        - <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA0</span><br>
+                                        + <span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA1</span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">COMP1 + EXTI Line 21</td>
+                                    <td class="px-4 py-3 text-xs">Phase C 偵測。</td>
+                                </tr>
+
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3 font-medium text-slate-200" rowspan="2">系統狀態採樣<br>(ADC)</td>
+                                    <td class="px-4 py-3"><span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA6</span></td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">ADC2_CH3 + DMA1_CH4</td>
+                                    <td class="px-4 py-3 text-xs">總線電壓採樣 (Voltage)。</td>
+                                </tr>
+                                <tr class="hover:bg-slate-700/30 transition-colors">
+                                    <td class="px-4 py-3"><span class="font-mono text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">PA7</span></td>
+                                    <td class="px-4 py-3 font-mono text-blue-400 text-xs">ADC2_CH4 + DMA1_CH4</td>
+                                    <td class="px-4 py-3 text-xs">系統電流採樣 (Current)。</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
