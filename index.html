@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AM32 韌體程式碼架構深度解析 (深色版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Deep slate background (slate-900) with dark panels (slate-800), slate-300 typography, and vibrant blue/indigo accents for a high-tech, professional dark mode experience suitable for developers. -->
+    <!-- Application Structure Plan: A dashboard-style SPA with a persistent sidebar (top nav on mobile) navigation. This structure was chosen to allow firmware developers to quickly jump between high-level overviews, specific directory mappings, and detailed lifecycle flows without losing context. It transforms a linear technical markdown document into a non-linear exploration tool, prioritizing user tasks. -->
+    <!-- Visualization & Content Choices: Report Info: Execution Flow -> Goal: Compare frequencies -> Viz: Bar Chart (Chart.js) -> Interaction: Hover tooltips -> Justification: Visually demonstrates the extreme difference between foreground interrupts (20kHz) and background tasks. Report Info: Signal Lifecycle -> Goal: Process -> Viz: Interactive Stepper (HTML/CSS/JS) -> Interaction: Click steps to reveal data -> Justification: Breaks down complex hardware processes into digestible steps without using SVGs. Confirming NO SVG/Mermaid. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #cbd5e1; }
+        .chart-container { position: relative; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; height: 40vh; max-height: 400px; min-height: 300px; }
+        .nav-btn.active { background-color: #1e293b; color: #60a5fa; border-right: 4px solid #3b82f6; font-weight: 600; }
+        .nav-btn:hover:not(.active) { background-color: #1e293b; }
+        @media (max-width: 768px) {
+            .nav-btn.active { border-right: none; border-bottom: 4px solid #3b82f6; }
+        }
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Scrollbar styling for dark mode */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col md:flex-row overflow-hidden text-slate-300">
+
+    <nav class="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 shadow-2xl z-10 flex flex-col md:h-screen shrink-0 overflow-y-auto">
+        <div class="p-6 border-b border-slate-800">
+            <h1 class="text-xl font-bold text-slate-100 leading-tight">AM32 韌體架構<br><span class="text-sm font-normal text-slate-400">G431 / B-G431B-ESC1</span></h1>
+        </div>
+        <div class="flex flex-row md:flex-col p-2 gap-1 overflow-x-auto md:overflow-visible">
+            <button onclick="app.switchView('overview')" id="nav-overview" class="nav-btn active text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">1. 專案總覽</button>
+            <button onclick="app.switchView('directory')" id="nav-directory" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">2. 目錄與硬體抽象</button>
+            <button onclick="app.switchView('execution')" id="nav-execution" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">3. 運作機制與頻率</button>
+            <button onclick="app.switchView('lifecycle')" id="nav-lifecycle" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">4. 訊號生命週期</button>
+            <button onclick="app.switchView('hack')" id="nav-hack" class="nav-btn text-left px-4 py-3 rounded-md text-sm transition-colors whitespace-nowrap md:whitespace-normal text-slate-400">5. 魔改建議</button>
+        </div>
+    </nav>
+
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-950 relative">
+        <div class="max-w-5xl mx-auto pb-20">
+
+            <section id="view-overview" class="view-section fade-in block">
+                <div class="bg-slate-800 rounded-xl shadow-lg p-6 md:p-8 border border-slate-700">
+                    <h2 class="text-2xl font-bold text-slate-100 mb-4">專案與目標總覽</h2>
+                    <p class="text-slate-300 mb-6 leading-relaxed">
+                        本應用程式將 AM32 韌體程式碼架構解析轉換為互動式儀表板。此區塊總結了目標硬體環境，讓開發者在深入程式碼前，能快速掌握微控制器型號與核心設計哲學。
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div class="bg-blue-900/30 p-4 rounded-lg border border-blue-800">
+                            <div class="text-xs text-blue-400 font-bold uppercase tracking-wider mb-1">對應硬體</div>
+                            <div class="text-lg font-semibold text-slate-100">B-G431B-ESC1</div>
+                        </div>
+                        <div class="bg-indigo-900/30 p-4 rounded-lg border border-indigo-800">
+                            <div class="text-xs text-indigo-400 font-bold uppercase tracking-wider mb-1">微控制器 (MCU)</div>
+                            <div class="text-lg font-semibold text-slate-100">STM32G431</div>
+                        </div>
+                        <div class="bg-amber-900/30 p-4 rounded-lg border border-amber-800">
+                            <div class="text-xs text-amber-500 font-bold uppercase tracking-wider mb-1">編譯目標宏 (Macro)</div>
+                            <div class="text-lg font-semibold text-slate-100">B_G431B_ESC</div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-200 mb-3">核心設計哲學</h3>
+                    <p class="text-slate-300 leading-relaxed bg-slate-900 p-4 rounded-lg border-l-4 border-slate-500">
+                        AM32 的架構設計非常經典，採用了<strong class="text-slate-100">「硬體無關的核心演算法」</strong>與<strong class="text-slate-100">「硬體相依的底層驅動」</strong>分離的設計模式。這使得演算法能在不同 MCU 間快速移植，而開發者只需專注於修改特定的硬體抽象層 (Mcu/)。
+                    </p>
+                </div>
+            </section>
+
+            <section id="view-directory" class="view-section fade-in hidden">
+                <div class="bg-slate-800 rounded-xl shadow-lg p-6 md:p-8 border border-slate-700">
+                    <h2 class="text-2xl font-bold text-slate-100 mb-4">目錄架構與硬體抽象層</h2>
+                    <p class="text-slate-300 mb-6 leading-relaxed">
+                        此區塊整理了 AM32 原始碼的結構。點擊下方不同的資料夾按鈕，即可展開該目錄下的關鍵檔案及其負責的功能。這有助於快速定位程式碼位置。
+                    </p>
+                    
+                    <div class="flex flex-wrap gap-2 mb-6">
+                        <button onclick="app.updateDirectory('inc')" class="dir-btn bg-blue-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-blue-500 transition border border-blue-500">Inc/ (標頭檔)</button>
+                        <button onclick="app.updateDirectory('src')" class="dir-btn bg-slate-700 text-slate-300 px-5 py-2 rounded-full text-sm font-medium hover:bg-slate-600 transition border border-slate-600">Src/ (核心邏輯)</button>
+                        <button onclick="app.updateDirectory('mcu')" class="dir-btn bg-slate-700 text-slate-300 px-5 py-2 rounded-full text-sm font-medium hover:bg-slate-600 transition border border-slate-600">Mcu/g431/ (底層驅動)</button>
+                    </div>
+
+                    <div id="directory-content" class="bg-slate-900/80 p-6 rounded-lg border border-slate-700 min-h-[250px] shadow-inner">
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-execution" class="view-section fade-in hidden">
+                <div class="bg-slate-800 rounded-xl shadow-lg p-6 md:p-8 border border-slate-700">
+                    <h2 class="text-2xl font-bold text-slate-100 mb-4">運作機制：前景與背景的交響樂</h2>
+                    <p class="text-slate-300 mb-6 leading-relaxed">
+                        AM32 並非單純的單一迴圈。此圖表與說明展示了系統如何分配硬體資源，利用高頻中斷 (Foreground) 處理時間敏感任務，並以低頻主迴圈 (Background) 處理邏輯與遙測。
+                    </p>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                        <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                            <div class="chart-container">
+                                <canvas id="executionChart"></canvas>
+                            </div>
+                            <p class="text-xs text-center text-slate-500 mt-3">註：頻率數據為對數概念展示，突顯高頻與低頻之巨大差異。</p>
+                        </div>
+                        <div class="space-y-4" id="execution-details">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-lifecycle" class="view-section fade-in hidden">
+                <div class="bg-slate-800 rounded-xl shadow-lg p-6 md:p-8 border border-slate-700">
+                    <h2 class="text-2xl font-bold text-slate-100 mb-4">關鍵訊號生命週期</h2>
+                    <p class="text-slate-300 mb-6 leading-relaxed">
+                        了解訊號「怎麼進來、電壓怎麼出去」是最直觀的硬體學習法。點擊下方步驟，追蹤 DShot 指令如何轉化為驅動無刷馬達的 PWM 訊號。
+                    </p>
+
+                    <div class="flex flex-col md:flex-row gap-4 mb-8">
+                        <button onclick="app.setLifecycle(0)" id="step-btn-0" class="step-btn flex-1 py-3 px-4 border rounded-lg font-bold text-left md:text-center transition-colors bg-blue-600 border-blue-500 text-white shadow-md">
+                            <span class="inline-block bg-slate-900 text-blue-400 border border-blue-400 rounded-full w-6 h-6 text-center leading-5 text-xs mr-2">A</span>
+                            控制指令輸入 (RX)
+                        </button>
+                        <button onclick="app.setLifecycle(1)" id="step-btn-1" class="step-btn flex-1 py-3 px-4 border text-slate-400 rounded-lg font-bold text-left md:text-center transition-colors bg-slate-900 border-slate-700 hover:border-slate-500">
+                            <span class="inline-block bg-slate-700 text-slate-400 border border-slate-600 rounded-full w-6 h-6 text-center leading-5 text-xs mr-2">B</span>
+                            系統狀態感知
+                        </button>
+                        <button onclick="app.setLifecycle(2)" id="step-btn-2" class="step-btn flex-1 py-3 px-4 border text-slate-400 rounded-lg font-bold text-left md:text-center transition-colors bg-slate-900 border-slate-700 hover:border-slate-500">
+                            <span class="inline-block bg-slate-700 text-slate-400 border border-slate-600 rounded-full w-6 h-6 text-center leading-5 text-xs mr-2">C</span>
+                            動力輸出驅動 (TX)
+                        </button>
+                    </div>
+
+                    <div id="lifecycle-content" class="bg-slate-900 border border-indigo-900 p-6 rounded-xl min-h-[200px] shadow-inner">
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-hack" class="view-section fade-in hidden">
+                <div class="bg-slate-800 rounded-xl shadow-lg p-6 md:p-8 border border-slate-700">
+                    <h2 class="text-2xl font-bold text-slate-100 mb-4">未來魔改建議 (Where to Hack?)</h2>
+                    <p class="text-slate-300 mb-6 leading-relaxed">
+                        針對手勢控制無人機與物流載荷的特殊需求，如果您需要修改 AM32 的原始碼，請鎖定以下三個核心區域進行工程介入。
+                    </p>
+                    
+                    <div class="space-y-4">
+                        <div class="p-5 bg-slate-900/80 border border-slate-700 rounded-lg hover:border-blue-500/50 transition-colors cursor-default">
+                            <h4 class="font-bold text-lg text-slate-100 mb-2">1. 修改硬體對應 / 調教死區 (Deadtime)</h4>
+                            <p class="text-slate-400 text-sm">直接修改 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">Inc/targets.h</code> 裡 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">#ifdef B_G431B_ESC</code> 的區塊。若您換了功率更大的 MOSFET 子板，務必在此調整 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">DEAD_TIME</code> 以防止上下橋臂短路炸管。</p>
+                        </div>
+                        <div class="p-5 bg-slate-900/80 border border-slate-700 rounded-lg hover:border-blue-500/50 transition-colors cursor-default">
+                            <h4 class="font-bold text-lg text-slate-100 mb-2">2. 攔截並修改油門曲線 (Throttle Curve)</h4>
+                            <p class="text-slate-400 text-sm">尋找 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">Src/main.c</code> 裡接收完 DShot 指令並準備賦值給 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">input</code> 變數的地方。若要做特殊的 PID 平滑化或油門限制，可在此加入過濾邏輯。</p>
+                        </div>
+                        <div class="p-5 bg-slate-900/80 border border-slate-700 rounded-lg hover:border-blue-500/50 transition-colors cursor-default">
+                            <h4 class="font-bold text-lg text-slate-100 mb-2">3. 深入優化控制頻率 (Loop Hz)</h4>
+                            <p class="text-slate-400 text-sm">目前的 20kHz 足以應付 DShot600。若未來要實驗更高頻率，需連動修改 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">targets.h</code> 中的 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">LOOP_FREQUENCY_HZ</code> 以及 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">peripherals.c</code> 中 <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 font-mono border border-slate-700">MX_TIM6_Init</code> 的分頻計算公式。</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <script>
+        // Set Chart.js global defaults for dark mode
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.scale.grid.color = 'rgba(148, 163, 184, 0.1)';
+        Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+
+        const appData = {
+            directories: {
+                inc: {
+                    title: "Inc/ 核心標頭檔",
+                    desc: "存放跨平台的常數、巨集與全域定義。",
+                    items: [
+                        { name: "targets.h", role: "★ 最重要的設定檔：定義所有開發板的 Macro、腳位分配、死區時間、迴圈頻率。" }
+                    ]
+                },
+                src: {
+                    title: "Src/ 核心邏輯 (硬體無關)",
+                    desc: "演算法的核心，理論上不直接操作硬體暫存器。",
+                    items: [
+                        { name: "main.c", role: "主程式進入點、狀態機、大迴圈 (Background Task)。" },
+                        { name: "dshot.c", role: "DShot 數位訊號解碼與 eRPM 遙測編碼。" },
+                        { name: "phasecalc.c", role: "馬達換相邏輯、進角 (Timing) 計算。" },
+                        { name: "telemetry.c", role: "KISS / BDShot 遙測數據打包。" },
+                        { name: "eeprom.c", role: "儲存使用者設定 (如馬達轉向、啟動功率)。" }
+                    ]
+                },
+                mcu: {
+                    title: "Mcu/g431/ 硬體抽象層",
+                    desc: "B-G431B-ESC1 的底層代碼都在這裡，負責直接與 MCU 暫存器溝通。",
+                    items: [
+                        { name: "peripherals.c", role: "初始化 TIM1(PWM), TIM6(迴圈), GPIO。" },
+                        { name: "ADC.c", role: "初始化 ADC1/ADC2 與 DMA 傳輸。" },
+                        { name: "IO.c", role: "硬體層級的 DShot 輸入捕捉 (TIM15 + DMA)。" },
+                        { name: "stm32g4xx_it.c", role: "★ 中斷服務常式 (ISR)，包含 TIM6 Update 與 COMP(BEMF)。" }
+                    ]
+                }
+            },
+            execution: [
+                {
+                    type: "高頻前景 (Foreground)",
+                    color: "border-blue-500",
+                    bg: "bg-blue-900/30",
+                    border: "border-blue-800",
+                    titleColor: "text-blue-400",
+                    content: [
+                        "<strong class='text-slate-200'>TIM6 Update 中斷：</strong>系統的心跳，頻率高達 20kHz。負責計時與觸發 ADC 量測旗標 (PROCESS_ADC_FLAG)。",
+                        "<strong class='text-slate-200'>COMP/EXTI 中斷：</strong>處理反電動勢 (BEMF) 過零點偵測，觸發後立刻計算換相時間，優先權極高。",
+                        "<strong class='text-slate-200'>DMA 傳輸 (無CPU介入)：</strong>TIM15 抓取 DShot 脈寬由 DMA 塞入緩衝；ADC 轉換完成由 DMA 寫入變數。"
+                    ]
+                },
+                {
+                    type: "低頻背景 (Background)",
+                    color: "border-amber-500",
+                    bg: "bg-amber-900/30",
+                    border: "border-amber-800",
+                    titleColor: "text-amber-500",
+                    content: [
+                        "<strong class='text-slate-200'>主迴圈 (main.c)：</strong>執行 <code class='text-amber-400 bg-slate-800 px-1 rounded'>while(1)</code> 處理不緊急的任務。",
+                        "<strong class='text-slate-200'>ADC 與指令：</strong>檢查旗標啟動軟體觸發 ADC 轉換；解析 DMA 中的 DShot 封包獲取油門。",
+                        "<strong class='text-slate-200'>系統保護與遙測：</strong>打包 eRPM 進行 BDShot 回傳；監控堵轉、低壓與溫度。"
+                    ]
+                }
+            ],
+            lifecycle: [
+                {
+                    title: "步驟 A：控制指令輸入 (DShot RX)",
+                    details: [
+                        "<strong class='text-slate-200'>實體層：</strong>飛控 (Pixhawk 6C) 送出 DShot600 訊號至開發板的 <strong class='text-blue-400'>PA2</strong> 腳位。",
+                        "<strong class='text-slate-200'>硬體層 (IO.c)：</strong>PA2 被配置為 <code>TIM15_CH1</code> 的 Input Capture。每次電平變化，Timer 數值透過 <code>DMA1_CH1</code> 自動存入 Buffer。",
+                        "<strong class='text-slate-200'>邏輯層 (dshot.c)：</strong>主迴圈發現 Buffer 有資料，解析出 0~2047 的油門指令，或各種設定命令。"
+                    ]
+                },
+                {
+                    title: "步驟 B：系統狀態感知 (ADC / BEMF)",
+                    details: [
+                        "<strong class='text-slate-200'>觸發源：</strong>TIM6 產生 20kHz 中斷 -> 將 <code>PROCESS_ADC_FLAG</code> 置 1 -> main.c 發現旗標，發出軟體觸發啟動 ADC。",
+                        "<strong class='text-slate-200'>數據收集 (ADC.c)：</strong>ADC2 讀取 PA6(電壓) 與 PA7(電流)，透過 <code>DMA1_CH4</code> 存入變數。",
+                        "<strong class='text-slate-200'>過零偵測：</strong>COMP1/COMP2 在背景不斷比較 Phase A/B/C 電壓，等待過零點觸發中斷。"
+                    ]
+                },
+                {
+                    title: "步驟 C：動力輸出計算與驅動 (PWM TX)",
+                    details: [
+                        "<strong class='text-slate-200'>邏輯層 (phasecalc.c)：</strong>根據油門指令、轉子位置及 Timing 設定，計算出下一個換相狀態與 PWM 佔空比 (Duty Cycle)。",
+                        "<strong class='text-slate-200'>硬體層 (TIM1)：</strong>將佔空比寫入 TIM1 暫存器。",
+                        "<strong class='text-slate-200'>硬體保護：</strong>TIM1 自動在高邊 (PA8/9/10) 與低邊 (PB13/14/15) 間插入 <strong class='text-amber-400'>80 個 clock 的死區時間 (DEAD_TIME)</strong>，最終輸出驅動無刷馬達。"
+                    ]
+                }
+            ]
+        };
+
+        const app = {
+            chartInstance: null,
+
+            init() {
+                this.updateDirectory('inc');
+                this.setLifecycle(0);
+                this.renderExecutionDetails();
+            },
+
+            switchView(viewId) {
+                document.querySelectorAll('.view-section').forEach(el => {
+                    el.classList.add('hidden');
+                    el.classList.remove('block');
+                });
+                document.querySelectorAll('.nav-btn').forEach(el => {
+                    el.classList.remove('active', 'text-blue-400');
+                    el.classList.add('text-slate-400');
+                });
+                
+                const targetView = document.getElementById('view-' + viewId);
+                const targetBtn = document.getElementById('nav-' + viewId);
+                
+                if (targetView) {
+                    targetView.classList.remove('hidden');
+                    targetView.classList.add('block');
+                }
+                if (targetBtn) {
+                    targetBtn.classList.remove('text-slate-400');
+                    targetBtn.classList.add('active', 'text-blue-400');
+                }
+
+                if (viewId === 'execution' && !this.chartInstance) {
+                    this.initChart();
+                }
+            },
+
+            updateDirectory(key) {
+                document.querySelectorAll('.dir-btn').forEach(btn => {
+                    btn.className = 'dir-btn bg-slate-700 text-slate-300 px-5 py-2 rounded-full text-sm font-medium hover:bg-slate-600 transition border border-slate-600';
+                });
+                const activeBtn = event ? event.currentTarget : document.querySelector('.dir-btn');
+                if(activeBtn) {
+                    activeBtn.className = 'dir-btn bg-blue-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-blue-500 transition border border-blue-500';
+                }
+
+                const data = appData.directories[key];
+                const container = document.getElementById('directory-content');
+                
+                let html = `<h3 class="text-xl font-bold text-slate-100 mb-2">${data.title}</h3>`;
+                html += `<p class="text-slate-400 mb-4 text-sm">${data.desc}</p>`;
+                html += `<div class="grid grid-cols-1 gap-3">`;
+                
+                data.items.forEach(item => {
+                    html += `
+                        <div class="bg-slate-800 p-3 rounded shadow border border-slate-700 flex flex-col md:flex-row md:items-center gap-2 hover:border-slate-500 transition-colors">
+                            <span class="font-mono text-blue-400 font-bold text-sm min-w-[140px]">${item.name}</span>
+                            <span class="text-slate-300 text-sm">${item.role}</span>
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+                container.innerHTML = html;
+            },
+
+            renderExecutionDetails() {
+                const container = document.getElementById('execution-details');
+                let html = '';
+                appData.execution.forEach(section => {
+                    html += `
+                        <div class="border-l-4 ${section.color} ${section.bg} ${section.border} border-t border-r border-b p-4 rounded-r-lg shadow-sm">
+                            <h4 class="font-bold ${section.titleColor} mb-3 text-lg">${section.type}</h4>
+                            <ul class="list-disc list-inside text-sm text-slate-400 space-y-2">
+                                ${section.content.map(li => `<li class="leading-relaxed">${li}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            },
+
+            initChart() {
+                const ctx = document.getElementById('executionChart').getContext('2d');
+                this.chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['TIM6 中斷 (前景)', '主迴圈 (背景估算)'],
+                        datasets: [{
+                            label: '執行頻率 (Hz)',
+                            data: [20000, 1000],
+                            backgroundColor: [
+                                'rgba(59, 130, 246, 0.7)',
+                                'rgba(245, 158, 11, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgb(96, 165, 250)',
+                                'rgb(251, 191, 36)'
+                            ],
+                            borderWidth: 1,
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                titleColor: '#f1f5f9',
+                                bodyColor: '#cbd5e1',
+                                borderColor: '#334155',
+                                borderWidth: 1,
+                                padding: 10,
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.raw + ' Hz';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'logarithmic',
+                                title: { display: true, text: '頻率 Hz (對數刻度)' }
+                            }
+                        }
+                    }
+                });
+            },
+
+            setLifecycle(index) {
+                document.querySelectorAll('.step-btn').forEach((btn, i) => {
+                    const span = btn.querySelector('span');
+                    if (i === index) {
+                        btn.className = 'step-btn flex-1 py-3 px-4 border rounded-lg font-bold text-left md:text-center transition-colors bg-blue-600 border-blue-500 text-white shadow-md';
+                        span.className = 'inline-block bg-slate-900 text-blue-400 border border-blue-400 rounded-full w-6 h-6 text-center leading-5 text-xs mr-2';
+                    } else {
+                        btn.className = 'step-btn flex-1 py-3 px-4 border text-slate-400 rounded-lg font-bold text-left md:text-center transition-colors bg-slate-900 border-slate-700 hover:border-slate-500 shadow-sm';
+                        span.className = 'inline-block bg-slate-700 text-slate-400 border border-slate-600 rounded-full w-6 h-6 text-center leading-5 text-xs mr-2';
+                    }
+                });
+
+                const data = appData.lifecycle[index];
+                const container = document.getElementById('lifecycle-content');
+                let html = `<h3 class="text-xl font-bold text-blue-400 mb-4">${data.title}</h3>`;
+                html += `<div class="space-y-3">`;
+                data.details.forEach(detail => {
+                    html += `
+                        <div class="bg-slate-800 p-4 rounded shadow-sm text-slate-300 text-sm leading-relaxed border border-slate-700 hover:border-indigo-500/50 transition-colors">
+                            ${detail}
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+        });
+    </script>
+</body>
+</html>
